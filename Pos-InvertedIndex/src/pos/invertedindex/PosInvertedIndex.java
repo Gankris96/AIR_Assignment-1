@@ -237,7 +237,6 @@ public class PosInvertedIndex{
              */
             List<postingListEntry> postingList1 = invertedIndex.get(s1);
             List<postingListEntry> postingList2 = invertedIndex.get(s2);
-
             /*
              * Obtain the lengths of the posting lists
              */
@@ -277,6 +276,14 @@ public class PosInvertedIndex{
                     j++;
                 }
 
+            }
+            while(i<len1){
+                result.add(postingList1.get(i).getDocID());
+                i++;
+            }
+            while(j<len2){
+                result.add(postingList2.get(j).getDocID());
+                i++;
             }
         }
 
