@@ -9,10 +9,11 @@ import java.util.*;
  *
  * @author Ganesh 24/8/2017
  */
-public class PosInvertedIndex {
+
+public class PosInvertedIndex{
 
     static Map<String, Integer> inputFilesList = new HashMap<>();
-    static HashMap<String,List<Map<Integer,Set<Integer>>>> invertedIndex= new HashMap<>();
+    static Map<String, List<postingListEntry>> invertedIndex = new HashMap<>();
 
     /**
      * This function performs the initial setup of reading the inputfiles
@@ -31,7 +32,7 @@ public class PosInvertedIndex {
         for (File file : listOfFiles) {
             if (file.isFile()) {
 //                put the relative path of the file as the key in the map
-                 inputFilesList.put(file.getPath().replace("\\","/"), docId++);
+                inputFilesList.put(file.getPath().replace("\\","/"), docId++);
             }
 
         }
@@ -42,106 +43,348 @@ public class PosInvertedIndex {
         }
     }
 
-    /*
-    * Method to read all the files in inputFiles and generate an inverted index
-    *
-    * */
-    public static void createIndex(){
-        Scanner wordFile=null;
-        String res="";
-        String word;     // A word read from the file
-        Integer count;   // The number of occurrences of the word
-        int counter = 0;
-        int docCounter = 0;
-        int docC=0;
-        int flag=0;
-        //**FOR LOOP TO READ THE DOCUMENTS*
-        Map<Integer,Set<Integer>> documentMap=null;
-        Set<Integer> posSet=null;
-        List<Map<Integer,Set<Integer>>> valuePostingList=null;
-        List<Map<Integer,Set<Integer>>> valuePostingListIterator=null;
+    public static void createIndex() throws FileNotFoundException{
 
-        for(String filepath:inputFilesList.keySet())
-        { //start of for loop [*
-            int posCounter=1;
-            docC++;
-            docCounter=inputFilesList.get(filepath);
-            try
-            {
-                wordFile = new Scanner(new FileReader(filepath));
-                res+="rwfsuccess\n";
-                while (wordFile.hasNext( ))
-                {
+        for(String filepath : inputFilesList.keySet()){
 
-                    // Read the next word and get rid of the end-of-line marker if needed:
-                    word = wordFile.next( );
+            int posCounter = 1;
+            int docID = inputFilesList.get(filepath);
+            Scanner wordFile = new Scanner(new FileReader(filepath));
 
-                    // Convert the Word to lower case.
-                    word = word.toLowerCase();
+            while(wordFile.hasNext()){
 
-                    word = word.replaceAll("[^a-zA-Z0-9\\s]", "");
-                    //System.out.println(word);
-                    if(invertedIndex.containsKey(word)){
-                        //if the word is a key of the HashMap then
-                        valuePostingList=invertedIndex.get(word);
-                        valuePostingListIterator=invertedIndex.get(word);
-                        for(Map<Integer,Set<Integer>> innerMap:valuePostingListIterator){
-                            //if the value list for this Key has the docID then just add the position to Inner Map PositionList
-                            if(innerMap.containsKey(docCounter)){
-                                innerMap.get(docCounter).add(posCounter);
-                            }else{
-                                //if the docID for that word does not exist , then add it to the value List along with its required value
-                                documentMap=new HashMap<>();
-                                posSet=new TreeSet<>();
-                                posSet.add(posCounter);
-                                documentMap.put(docCounter,posSet);
-                                //do this to prevent concurrent adding
-                                //we cannot add to the same list that we are iterating
-                                flag=1;
-                            }
+                String word = wordFile.next();
+                word = word.toLowerCase();
+                word = word.replaceAll("[^a-zA-Z0-9\\s]", "");
+
+                /*
+                 * Check whether the word is already present in the hashmap
+                 */
+                if(invertedIndex.containsKey(word)){
+
+                    /*
+                     * If the word is already present, obtain a reference to its posting list
+                     */
+
+                    List<postingListEntry> postingList = invertedIndex.get(word);
+                    /*
+                     * This variable will be set to true if the current document ID is present in the word's posting list
+                     */
+                    boolean found = false;
+
+                    /*
+                     * Loop that checks whether the current document ID is present in the word's posting list
+                     */
+                    for(postingListEntry e : postingList){
+
+                        if(e.getDocID() == docID){
+
+                            found = true;
+                            e.addPosition(posCounter);
+                            break;
                         }
-                    }else{
-                        //if word is not yet seen then add it to the map
-                        documentMap=new HashMap<>();
-                        posSet=new TreeSet<>();
-                        posSet.add(posCounter);
-                        documentMap.put(docCounter,posSet);
-                        List<Map<Integer,Set<Integer>>> postingList=new ArrayList<>();
-                        postingList.add(documentMap);
-                        invertedIndex.put(word,postingList);
                     }
 
-                    posCounter++;
-                    //prevents the Concurrent addition Exception
-                    if(flag==1){
-                        valuePostingList.add(documentMap);
-                        flag=0;
+                    /*
+                     * If the current document ID is present in the word's posting list, create a new posting list object
+                     * and with the current document ID and add it to the posting list
+                     */
+
+                    if(!found){
+
+                        postingListEntry newEntry = new postingListEntry(docID);
+                        newEntry.addPosition(posCounter);
+                        postingList.add(newEntry);
                     }
                 }
+
+                /*
+                 * If the word is not present in the inverted index, add it, along with a new posting list
+                 * containing the current document ID
+                 */
+                else{
+
+                    List<postingListEntry> postingList = new ArrayList<>();
+                    postingListEntry newEntry = new postingListEntry(docID);
+                    newEntry.addPosition(posCounter);
+                    postingList.add(newEntry);
+                    invertedIndex.put(word, postingList);
+                }
+
+                posCounter++;
             }
-            catch (FileNotFoundException e)
-            {
-                System.err.println(e);
-                res+="rwfException\n";
-                System.out.println("-1");
+
+            wordFile.close();
+        }
+
+        /*
+         * Sort all the document IDs in every posting list, to facilitate fast query processing
+         */
+
+        for(String word : invertedIndex.keySet()){
+
+            List<postingListEntry> postingList = invertedIndex.get(word);
+
+            Collections.sort(postingList, new SortByDocID());
+        }
+
+        /*
+         * Display the entire inverted index
+         */
+
+        /*
+        for(String word : invertedIndex.keySet()){
+
+            System.out.println("Term :" + word);
+            System.out.println("Value List: " + invertedIndex.get(word).toString());
+        }
+        */
+    }
+
+    public static ArrayList<Integer> singleWord(String s){
+
+        ArrayList<Integer> result = new ArrayList<>();
+        /*
+         * If the inverted index does not contain the word, return an empty list
+         */
+        if(invertedIndex.containsKey(s)){
+
+            /*
+             * Traverse the posting list of the word and add each document ID to the result list
+             */
+            List<postingListEntry> postingList = invertedIndex.get(s);
+            for(postingListEntry e : postingList){
+
+                result.add(e.getDocID());
             }
         }
-        for(String keyWord:invertedIndex.keySet()){
-                System.out.println("Term :"+keyWord+ "\nValue List:"+invertedIndex.get(keyWord).toString());
+
+        return result;
+    }
+
+    /*
+     * Perform an intersection operation on the posting lists of two words
+     */
+    public static ArrayList<Integer> intersection(String s1, String s2){
+
+        ArrayList<Integer> result = new ArrayList<>();
+        /*
+         * If the inverted index does not contain either word, return an empty list
+         */
+        if(invertedIndex.containsKey(s1) && invertedIndex.containsKey(s2)){
+
+            /*
+             * Retrieve posting lists for bot words
+             */
+            List<postingListEntry> postingList1 = invertedIndex.get(s1);
+            List<postingListEntry> postingList2 = invertedIndex.get(s2);
+
+            /*
+             * Obtain the lengths of the posting lists
+             */
+            int len1 = postingList1.size();
+            int len2 = postingList2.size();
+            int i = 0, j = 0;
+
+            /*
+             * Traverse the posting lists
+             */
+
+            while(i < len1 && j < len2){
+
+                int docID1 = postingList1.get(i).getDocID();
+                int docID2 = postingList2.get(j).getDocID();
+
+                /*
+                 * If the document IDs match, add it to the result list and advance both pointers
+                 */
+                if(docID1 == docID2){
+
+                    result.add(docID1);
+                    i++;
+                    j++;
+                }
+                /*
+                 * If not, advance the pointer of the smaller document ID
+                 */
+                else if(docID1 < docID2){
+
+                    i++;
+                }
+                else{
+
+                    j++;
+                }
+
             }
+        }
+        return result;
+    }
+
+    /*
+     * Perform a union operation on the posting lists of two words
+     */
+    public static ArrayList<Integer> union(String s1, String s2){
+
+        ArrayList<Integer> result = new ArrayList<>();
+        /*
+         * If the inverted index does not contain either word, return an empty list
+         */
+        if(invertedIndex.containsKey(s1) && invertedIndex.containsKey(s2)){
+
+            /*
+             * Retrieve posting lists for bot words
+             */
+            List<postingListEntry> postingList1 = invertedIndex.get(s1);
+            List<postingListEntry> postingList2 = invertedIndex.get(s2);
+
+            /*
+             * Obtain the lengths of the posting lists
+             */
+            int len1 = postingList1.size();
+            int len2 = postingList2.size();
+            int i = 0, j = 0;
+
+            /*
+             * Traverse the posting lists
+             */
+            while(i < len1 && j < len2){
+
+                int docID1 = postingList1.get(i).getDocID();
+                int docID2 = postingList2.get(j).getDocID();
+
+                /*
+                 * If the document IDs match, add it to the result list and advance both pointers
+                 */
+
+                if(docID1 == docID2){
+
+                    result.add(docID1);
+                    i++;
+                    j++;
+                }
+                /*
+                 * If not, add the smaller document ID and advance its pointer
+                 */
+                else if(docID1 < docID2){
+
+                    result.add(docID1);
+                    i++;
+                }
+                else{
+
+                    result.add(docID2);
+                    j++;
+                }
+
+            }
+        }
+
+        return result;
+    }
+
+    /*
+     * Perform a phrase query search
+     */
+    public static ArrayList<Integer> phraseQuery(String s){
+
+        ArrayList<Integer> result = new ArrayList<>();
+
+
+
+        return result;
+    }
+
+    public static void enterQueries(){
+
+        Scanner stdIn = new Scanner(System.in);
+        System.out.println("Enter Queries");
+        char choice;
+        do{
+
+            String query = stdIn.nextLine();
+
+            System.out.println("Continue?(y/n)");
+            choice = stdIn.nextLine().charAt(0);
+
+        }while(choice == 'y' || choice == 'Y');
+
+        stdIn.close();
+    }
+
+    public static void main(String []args){
+
+        init();
+        try {
+
+            createIndex();
+        }
+        catch (FileNotFoundException e) {
+
+            System.out.println("FILE NOT FOUND EXCEPTION");
+        }
+
+        //enterQueries();
+        System.out.println(singleWord("old"));
+        System.out.println(intersection("snake", "frog"));
+        System.out.println(union("snake", "frog"));
+    }
+}
+
+
+class postingListEntry{
+
+    private int docID;
+    private ArrayList<Integer> positions;
+
+    public postingListEntry(int docID){
+
+        this.docID = docID;
+        positions = new ArrayList<Integer>();
+    }
+
+    public postingListEntry(int docID, ArrayList<Integer> positions){
+
+        this.docID = docID;
+        this.positions = positions;
+    }
+
+    public void addPosition(int pos){
+
+        if(!positions.contains(pos)){
+
+            positions.add(pos);
+        }
 
     }
 
-    /**
-     * @param args the command line arguments
-     */
-    public static void main(String[] args)  {
-        // TODO code application logic here
-        //read the inputfiles folder and generate Hashmap
-        init();
-        //create the hashMap
-        createIndex();
+    public void sortPositions(){
 
+        Collections.sort(positions);
+    }
+
+    public int getDocID(){
+
+        return docID;
+    }
+
+    public ArrayList<Integer> getPositionList(){
+
+        return positions;
+    }
+
+    @Override
+    public String toString(){
+
+        return docID + " => " + positions.toString();
+    }
+}
+
+class SortByDocID implements Comparator<postingListEntry>{
+
+    public int compare(postingListEntry e1, postingListEntry e2){
+
+        return e1.getDocID() - e2.getDocID();
     }
 
 }
